@@ -3,9 +3,14 @@ package shll
 import (
 	"container/heap"
 	"errors"
+	"fmt"
 	"hash"
 	"hash/fnv"
 	"math"
+)
+
+var (
+	exp32 = math.Pow(2, 32)
 )
 
 /*
@@ -16,7 +21,8 @@ type SlidingHyperLogLog struct {
 	alpha  float64
 	p      uint
 	m      uint
-	lpfm   [][]tR
+	lpfm   []*tRHeap
+	n      uint
 	hasher hash.Hash64
 }
 
@@ -71,14 +77,19 @@ func getAlpha(m uint) (result float64) {
 /*
 NewSlidingHyperLogLog ...
 */
-func NewSlidingHyperLogLog(errRate float64, window uint32) (*SlidingHyperLogLog, error) {
+func NewSlidingHyperLogLog(errRate float64, window uint32, nFlows uint32) (*SlidingHyperLogLog, error) {
 	if !(0 < errRate && errRate < 1) {
 		return nil, errors.New("errRate must be between 0 and 1")
 	}
 	shll := &SlidingHyperLogLog{}
 	shll.p = uint(math.Ceil(math.Log2(math.Pow((1.04 / errRate), 2))))
 	shll.m = 1 << shll.p
-	shll.lpfm = make([][]tR, shll.m, shll.m)
+	shll.lpfm = make([]*tRHeap, shll.m, shll.m)
+	fmt.Println(shll.m)
+	for i := range shll.lpfm {
+		shll.lpfm[i] = &tRHeap{}
+		heap.Init(shll.lpfm[i])
+	}
 	shll.alpha = getAlpha(shll.m)
 	shll.window = window
 	shll.hasher = fnv.New64a()
@@ -86,87 +97,69 @@ func NewSlidingHyperLogLog(errRate float64, window uint32) (*SlidingHyperLogLog,
 	return shll, nil
 }
 
-/*
-Add ...
-*/
-func (shll *SlidingHyperLogLog) Add(timestamp uint32, value []byte) {
+func (shll *SlidingHyperLogLog) getPosAndValue(value []byte) (uint8, uint64) {
 	shll.hasher.Write(value)
 	val := shll.hasher.Sum64()
 	shll.hasher.Reset()
 	k := 64 - shll.p
 	j := val >> uint(k)
 	R := getRho(val<<shll.p, 6)
+	return R, j
+}
 
+/*
+Add ...
+*/
+func (shll *SlidingHyperLogLog) Add(timestamp uint32, value []byte) {
+	R, j := shll.getPosAndValue(value)
 	Rmax := uint8(0)
-	var tmp []tR
-	tmax := uint32(0)
-	h := tRHeap(shll.lpfm[j])
-	heap.Init(&h)
-	heap.Push(&h, tR{timestamp, R})
+	tmax := int(0)
+	heap.Push(shll.lpfm[j], tR{timestamp, R})
 
-	tmp2 := make([]tR, h.Len())
-	for h.Len() > 0 {
-		item := heap.Pop(&h).(tR)
-		tmp2[h.Len()] = item
+	tmp2 := make([]tR, shll.lpfm[j].Len(), shll.lpfm[j].Len())
+	for shll.lpfm[j].Len() > 0 {
+		item := heap.Pop(shll.lpfm[j]).(tR)
+		tmp2[shll.lpfm[j].Len()] = item
 	}
 
-	for i, value := range tmp2 {
+	for _, value := range tmp2 {
 		t := value.t
 		R := value.R
+
 		if tmax == 0 {
-			tmax = t
+			tmax = int(t)
 		}
-		if t < (tmax - shll.window) {
+		if int(t) < (tmax - int(shll.window)) {
 			break
 		}
+
 		if R > Rmax {
-			tmp[i] = value
 			Rmax = R
+			heap.Push(shll.lpfm[j], value)
 		}
+
+		if uint(shll.lpfm[j].Len()) == shll.n {
+			break
+		}
+
 	}
 
-	shll.lpfm[j] = tmp
 }
 
 /*
 GetCount ...
 */
-func (shll *SlidingHyperLogLog) GetCount(timestamp uint32, window uint32) (uint32, error) {
-	/*
-		"""
-		Returns the estimate of the cardinality at 'timestamp' using 'window'
-		"""
-		if window is None:
-		    window = self.window
-
-		if not 0 < window <= self.window:
-		    raise ValueError('0 < window <= W')
-
-		def max_r(l):
-		    return max(l) if l else 0
-
-		M = [max_r([R for ts, R in lpfm if ts >= (timestamp - window)]) if lpfm else 0 for lpfm in self.LPFM]
-
-		#count number or registers equal to 0
-		V = M.count(0)
-		if V > 0:
-		    H = self.m * math.log(self.m / float(V))
-		    return H if H <= get_treshold(self.p) else self._Ep(M)
-		else:
-		    return self._Ep(M)
-	*/
+func (shll *SlidingHyperLogLog) GetCount(timestamp uint32, window uint32) (uint, error) {
 	if window == 0 {
 		window = shll.window
 	}
+
 	if !(0 < window && window <= shll.window) {
 		return 0, errors.New("0 < window <= W")
 	}
 
-	var maxR = func(l []uint) uint {
-		if len(l) == 0 {
-			return 0
-		}
-		temp := uint(0)
+	var maxR = func(l []uint8) uint8 {
+		temp := uint8(0)
 		for _, value := range l {
 			if value > temp {
 				temp = value
@@ -175,15 +168,48 @@ func (shll *SlidingHyperLogLog) GetCount(timestamp uint32, window uint32) (uint3
 		return temp
 	}
 
-	//M = [max_r([R for ts, R in lpfm if ts >= (timestamp - window)]) if lpfm else 0 for lpfm in self.LPFM]
+	m := float64(shll.m)
+	v := 0
+	sum := 0.0
 	M := make([]uint8, len(shll.lpfm), len(shll.lpfm))
 	for i, lfpm := range shll.lpfm {
-		if len(lfpm) == 0 {
+		if lfpm.Len() == 0 {
 			M[i] = 0
 			continue
 		}
-		var tempM []uint8
-		M[i] = maxR()
+		Rs := make([]uint8, lfpm.Len(), lfpm.Len())
+		tmp2 := make([]tR, lfpm.Len(), lfpm.Len())
+		for lfpm.Len() > 0 {
+			item := heap.Pop(lfpm).(tR)
+			tmp2[lfpm.Len()] = item
+		}
+
+		for i, tr := range tmp2 {
+			if int(tr.t) >= int(timestamp)-int(window) &&
+				int(tr.t) <= int(timestamp) {
+				Rs[i] = tr.R
+			}
+			heap.Push(lfpm, tr)
+		}
+		M[i] = maxR(Rs)
 	}
-	return 0, nil
+
+	for _, value := range M {
+		sum += 1.0 / math.Pow(2.0, float64(value))
+		if value == 0 {
+			v++
+		}
+	}
+
+	estimate := shll.alpha * m * m / sum
+	if estimate <= 5.0/2.0*m {
+		// Small range correction
+		if v > 0 {
+			estimate = m * math.Log(m/float64(v))
+		}
+	} else if estimate > 1.0/30.0*exp32 {
+		// Large range correction
+		estimate = -exp32 * math.Log(1-estimate/exp32)
+	}
+	return uint(estimate), nil
 }
