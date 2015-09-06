@@ -3,7 +3,6 @@ package shll
 import (
 	"container/heap"
 	"errors"
-	"fmt"
 	"hash"
 	"hash/fnv"
 	"math"
@@ -14,7 +13,10 @@ var (
 )
 
 /*
-SlidingHyperLogLog ...
+SlidingHyperLogLog adapts the HyperLogLog algorithm of Flajolet et. al to the
+data stream processing by adding a sliding window mechanism. It has the
+advantage to estimate at any time the number of flows seen over any duration
+bounded by the length of the sliding window.
 */
 type SlidingHyperLogLog struct {
 	window uint32
@@ -75,7 +77,10 @@ func getAlpha(m uint) (result float64) {
 }
 
 /*
-NewSlidingHyperLogLog ...
+NewSlidingHyperLogLog return a new SlidingHyperLogLog.
+errorRate = abs_err / cardinality
+window = window to keep track of
+nFlows = number of possible future maximum to keep track of per regiser
 */
 func NewSlidingHyperLogLog(errRate float64, window uint32, nFlows uint32) (*SlidingHyperLogLog, error) {
 	if !(0 < errRate && errRate < 1) {
@@ -85,7 +90,6 @@ func NewSlidingHyperLogLog(errRate float64, window uint32, nFlows uint32) (*Slid
 	shll.p = uint(math.Ceil(math.Log2(math.Pow((1.04 / errRate), 2))))
 	shll.m = 1 << shll.p
 	shll.lpfm = make([]*tRHeap, shll.m, shll.m)
-	fmt.Println(shll.m)
 	for i := range shll.lpfm {
 		shll.lpfm[i] = &tRHeap{}
 		heap.Init(shll.lpfm[i])
@@ -108,7 +112,7 @@ func (shll *SlidingHyperLogLog) getPosAndValue(value []byte) (uint8, uint64) {
 }
 
 /*
-Add ...
+Add a value with a timestamp to the SlidingHyperLogLog.
 */
 func (shll *SlidingHyperLogLog) Add(timestamp uint32, value []byte) {
 	R, j := shll.getPosAndValue(value)
@@ -147,7 +151,7 @@ func (shll *SlidingHyperLogLog) Add(timestamp uint32, value []byte) {
 }
 
 /*
-GetCount ...
+GetCount returns the estimated cardinality within a 'window' to the past from a given 'timestamp'
 */
 func (shll *SlidingHyperLogLog) GetCount(timestamp uint32, window uint32) (uint, error) {
 	if window == 0 {
