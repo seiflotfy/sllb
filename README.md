@@ -7,3 +7,15 @@ The estimate is very accurate with a standard error of about 1.04/sqrt(m) (the s
 For details about the algorithm and citations please use this article for now:
 
 ["Sliding HyperLogLog: Estimating cardinality in a data stream" by Yousra Chabchoub & Georges Hébrail Kaminsky](https://hal.archives-ouvertes.fr/hal-00465313/file/sliding_HyperLogLog.pdf)
+
+## Example Usage:
+```go
+shll, err := NewSlidingHyperLogLog(0.005, 1000000, 100) //created a Sliding HyperLogLog
+
+shll.Add(1234567890, []byte("shll"))
+shll.Add(1234567899, []byte("shll2"))
+
+shll.GetCount(1234567890, 0)
+//returns 2
+
+```
