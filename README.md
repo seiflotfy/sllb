@@ -1,4 +1,5 @@
 # Sliding-HyperLogLog
+[![GoDoc](https://godoc.org/github.com/seiflotfy/sliding-hyperloglog?status.svg)](https://godoc.org/github.com/seiflotfy/sliding-hyperloglog)
 
 An implementation of an algorithm for estimating the number of active flows in a data stream is proposed. This algorithm adapts the HyperLogLog algorithm of Flajolet et. al to the data stream processing by adding a sliding window mechanism. It has the advantage to estimate at any time the number of flows seen over any duration bounded by the length of the sliding window.
 
