@@ -1,41 +1,41 @@
 package shll
 
 import (
+	"fmt"
 	"math"
 	"math/rand"
-	"strconv"
 	"testing"
 )
 
+func sumFromIndex(counts []uint64, index uint64) uint64 {
+	var count uint64
+	for i := int(index); i < len(counts); i++ {
+		count += counts[i]
+	}
+	return count
+}
+
 func TestAdd(t *testing.T) {
-	shll, err := NewSlidingHyperLogLog(0.005, 1000000, 100)
+	shll, err := NewSlidingHyperLogLog(0.008)
 	if err != nil {
 		t.Error("Expected no error on NewSlidingHyperLogLog, got", err)
 	}
-	for i := 0; i < 1000000; i++ {
-		shll.Add(uint32(i+1), []byte("test-"+strconv.Itoa(rand.Int())))
+
+	counts := make([]uint64, 100)
+	for i := 0; i < len(counts); i++ {
+		for j := 0; j <= rand.Intn(100000); j++ {
+			e := fmt.Sprintf("e-%d-%d", i, j)
+			shll.Insert(uint64(i), []byte(e))
+			counts[i]++
+		}
 	}
 
-	count, _ := shll.GetCount(1000000, 0)
-	res := math.Abs(100 * (1 - float64(count)/1000000))
-	if res > 3 {
-		t.Errorf("Expected error <= 3.0%%, got %f", res)
-	}
-
-	count, _ = shll.GetCount(1000000, 100)
-	res = math.Abs(100 * (1 - float64(count)/100))
-	if res > 3 {
-		t.Errorf("Expected error <= 3.0%%, got %f", res)
-	}
-
-	count, _ = shll.GetCount(0, 100)
-	if count != 0 {
-		t.Errorf("Expected error <= 0.0%%, got %f", res)
-	}
-
-	count, _ = shll.GetCount(500000, 1000)
-	res = math.Abs(100 * (1 - float64(count)/100))
-	if res > 19 {
-		t.Errorf("Expected error <= 0.19%%, got %f", res)
+	for i := uint64(0); i <= uint64(len(counts)); i++ {
+		est := shll.Estimate(i)
+		exp := sumFromIndex(counts, i)
+		offset := uint64(math.Abs(5 * float64(exp) / 100))
+		if est < exp-offset || est > exp+offset {
+			t.Errorf("%d Expected error <= 5.0%% for %d, got %d", i, exp, est)
+		}
 	}
 }
