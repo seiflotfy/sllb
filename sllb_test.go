@@ -1,4 +1,4 @@
-package shll
+package sllb
 
 import (
 	"fmt"
@@ -15,8 +15,8 @@ func sumFromIndex(counts []uint64, index uint64) uint64 {
 	return count
 }
 
-func TestAdd(t *testing.T) {
-	shll, err := NewSlidingHyperLogLog(0.008)
+func TestInsertEstimate(t *testing.T) {
+	sllb, err := New(0.008)
 	if err != nil {
 		t.Error("Expected no error on NewSlidingHyperLogLog, got", err)
 	}
@@ -25,13 +25,13 @@ func TestAdd(t *testing.T) {
 	for i := 0; i < len(counts); i++ {
 		for j := 0; j <= rand.Intn(100000); j++ {
 			e := fmt.Sprintf("e-%d-%d", i, j)
-			shll.Insert(uint64(i), []byte(e))
+			sllb.Insert(uint64(i), []byte(e))
 			counts[i]++
 		}
 	}
 
 	for i := uint64(0); i <= uint64(len(counts)); i++ {
-		est := shll.Estimate(i)
+		est := sllb.Estimate(i)
 		exp := sumFromIndex(counts, i)
 		offset := uint64(math.Abs(5 * float64(exp) / 100))
 		if est < exp-offset || est > exp+offset {

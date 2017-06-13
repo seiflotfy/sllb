@@ -1,4 +1,4 @@
-package shll
+package sllb
 
 import (
 	"testing"
@@ -37,7 +37,7 @@ func testEq(a, b []tR) bool {
 	return true
 }
 
-func TestInsert(t *testing.T) {
+func TestRegInsert(t *testing.T) {
 	r := newReg()
 	for _, td := range testData {
 		r.insert(td.tr)
