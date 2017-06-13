@@ -1,7 +1,7 @@
 # Sliding-LogLog-Beta
 
 ## TL;DR
-Estimate cardinality of a stream since an arbitratry past timestamp using a slightly changed HyperLogLog implemnetation
+Estimate cardinality of a stream since an arbitrary past timestamp using a slightly changed HyperLogLog implemnetation
 
 ## Theory
 [![GoDoc](https://godoc.org/github.com/seiflotfy/sllb?status.svg)](https://godoc.org/github.com/seiflotfy/sllb)
